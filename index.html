@@ -1362,10 +1362,38 @@
                     } else {
                         state.setup[id] = parseFloat(e.target.value) || 0;
                     }
+                    
+                    if (id === 'routeType') {
+                        toggleRouteTypeFields();
+                    }
+                    
                     updateBreakdown();
                     saveState();
                 });
             });
+            
+            toggleRouteTypeFields(); // Run on initial load
+        }
+
+        // Hide certain fields if Residential is selected
+        function toggleRouteTypeFields() {
+            const routeType = state.setup.routeType;
+            const lockersField = document.getElementById('lockers').parentElement;
+            const aptsField = document.getElementById('apartments').parentElement;
+            
+            if (routeType === 'Residential') {
+                lockersField.style.display = 'none';
+                aptsField.style.display = 'none';
+                
+                // Clear their values behind the scenes so they don't affect rate math
+                state.setup.lockers = 0;
+                state.setup.apartments = 0;
+                document.getElementById('lockers').value = '';
+                document.getElementById('apartments').value = '';
+            } else {
+                lockersField.style.display = 'block';
+                aptsField.style.display = 'block';
+            }
         }
 
         function switchTab(tabName) {
