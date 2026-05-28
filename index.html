@@ -1252,7 +1252,7 @@
         <!-- Leaderboard Tab -->
         <div class="tab-content" id="leaderboard">
             <div class="leaderboard-header">
-                <div class="leaderboard-title">🏆 Top Drivers</div>
+                <div class="leaderboard-title" onclick="resetLeaderboard()" style="cursor: pointer;">🏆 Top Drivers</div>
                 <div class="leaderboard-subtitle">Global Stops/Hr Averages</div>
             </div>
 
@@ -1290,7 +1290,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-        import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyA8RXXIqP4nWk_E5pHlYR8iR2i2QjcbCuA",
@@ -2213,6 +2213,29 @@
 
             container.innerHTML = html;
         }
+
+        window.resetLeaderboard = async function() {
+            const pass = prompt("Admin Panel: Enter passcode to reset the leaderboard:");
+            if (pass !== "admin123") {
+                if (pass !== null) alert("Incorrect passcode.");
+                return;
+            }
+            
+            if(!confirm("Are you sure you want to completely wipe the Top Drivers leaderboard for everyone?")) return;
+            const container = document.getElementById('leaderboard-content');
+            container.innerHTML = '<div class="empty-state">Wiping leaderboard... 🧹</div>';
+            try {
+                const q = query(collection(db, "leaderboard"));
+                const querySnapshot = await getDocs(q);
+                for (const document of querySnapshot.docs) {
+                    await deleteDoc(doc(db, "leaderboard", document.id));
+                }
+                renderLeaderboard();
+            } catch (e) {
+                console.error("Error wiping leaderboard: ", e);
+                container.innerHTML = '<div class="empty-state">Error wiping leaderboard. Check console.</div>';
+            }
+        };
 
         // Live Map Logic
         function initMap() {
