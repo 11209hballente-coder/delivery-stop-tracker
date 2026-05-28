@@ -1894,8 +1894,26 @@
 
 
 
+        let stopCooldownActive = false;
         function addStop() {
-            if (!state.shift.isActive) return;
+            if (!state.shift.isActive || stopCooldownActive) return;
+            
+            // Apply 10-second cooldown to prevent cheating
+            stopCooldownActive = true;
+            const btn = document.getElementById('massive-log-stop');
+            if(btn) {
+                btn.style.opacity = '0.5';
+                btn.textContent = 'Wait 10s... ⏳';
+            }
+            
+            setTimeout(() => {
+                stopCooldownActive = false;
+                if(btn) {
+                    btn.style.opacity = '1';
+                    btn.innerHTML = '✓ Stop Delivered';
+                }
+            }, 10000);
+
             state.shift.stops.push(Date.now());
             
             // Record location
@@ -2035,7 +2053,11 @@
             state.shift.isActive = false;
             
             if (window.firebaseDB && state.setup.driverName) {
-                window.firebaseDB.saveScore(state.setup.driverName, rate, finalStops, shiftRecord.date, state.setup.routeType);
+                if (elapsed >= 1.0) {
+                    window.firebaseDB.saveScore(state.setup.driverName, rate, finalStops, shiftRecord.date, state.setup.routeType);
+                } else {
+                    console.log("Shift was less than 1 hour. Not saving to global leaderboard.");
+                }
             }
             
             saveState();
