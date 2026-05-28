@@ -7,6 +7,11 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Delivery Tracker">
     <title>Delivery Stop Tracker</title>
+    
+    <!-- Leaflet CSS & JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
     <style>
         * {
             margin: 0;
@@ -910,6 +915,28 @@
             color: #1d4ed8;
         }
 
+        /* Map Tab */
+        #map-container {
+            height: 400px;
+            width: 100%;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            position: relative;
+        }
+        .map-status {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(255,255,255,0.9);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            z-index: 1000;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+        }
+
         @media (max-width: 480px) {
             body {
                 padding: 10px;
@@ -1051,6 +1078,13 @@
 
         <!-- Shift Tab -->
         <div class="tab-content" id="shift">
+            
+            <!-- Live Map Embed -->
+            <div id="map-container" style="margin-bottom: 16px; height: 250px;">
+                <div id="leaflet-map" style="height: 100%; width: 100%;"></div>
+                <div class="map-status" id="map-status">Waiting for GPS...</div>
+            </div>
+
             <div class="shift-header">
                 <div class="shift-timer" id="shift-timer">00:00:00</div>
                 <div class="shift-meta">
@@ -1268,6 +1302,12 @@
             }));
         }
 
+        let timerInterval;
+        let leafletMap = null;
+        let mapMarker = null;
+        let watchId = null;
+        let mapInitialized = false;
+
         // Initialize app
         function init() {
             loadState();
@@ -1321,6 +1361,13 @@
             }
             if (tabName === 'leaderboard') {
                 renderLeaderboard();
+            }
+            if (tabName === 'shift') {
+                if (!mapInitialized) {
+                    initMap();
+                } else if (leafletMap) {
+                    setTimeout(() => leafletMap.invalidateSize(), 100);
+                }
             }
         }
 
@@ -1511,6 +1558,12 @@
             updateShiftDisplay();
             renderStopLog();
             startTimer();
+            
+            if (!mapInitialized) {
+                initMap();
+            } else if (leafletMap) {
+                setTimeout(() => leafletMap.invalidateSize(), 100);
+            }
         }
 
         // Shift Timer
@@ -1933,6 +1986,57 @@
             });
 
             document.getElementById('leaderboard-content').innerHTML = html;
+        }
+
+        // Live Map Logic
+        function initMap() {
+            if (mapInitialized) return;
+            mapInitialized = true;
+            
+            // Default center before GPS lock
+            leafletMap = L.map('leaflet-map').setView([33.9425, -118.0351], 15);
+            
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap contributors'
+            }).addTo(leafletMap);
+            
+            const customIcon = L.divIcon({
+                className: 'custom-marker',
+                html: '<div style="background-color: #3b82f6; width: 18px; height: 18px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 6px rgba(0,0,0,0.5);"></div>',
+                iconSize: [24, 24],
+                iconAnchor: [12, 12]
+            });
+            
+            mapMarker = L.marker([33.9425, -118.0351], { icon: customIcon }).addTo(leafletMap);
+            
+            startLiveTracking();
+        }
+        
+        function startLiveTracking() {
+            if (!("geolocation" in navigator)) {
+                document.getElementById('map-status').textContent = 'GPS Unavailable 🔴';
+                return;
+            }
+            
+            if (watchId) navigator.geolocation.clearWatch(watchId);
+            
+            watchId = navigator.geolocation.watchPosition((position) => {
+                const lat = position.coords.latitude;
+                const lon = position.coords.longitude;
+                
+                document.getElementById('map-status').textContent = 'Live 🟢';
+                
+                if (mapMarker && leafletMap) {
+                    mapMarker.setLatLng([lat, lon]);
+                    leafletMap.setView([lat, lon], leafletMap.getZoom());
+                }
+            }, (error) => {
+                document.getElementById('map-status').textContent = 'GPS Error 🔴';
+            }, {
+                enableHighAccuracy: true,
+                maximumAge: 0,
+                timeout: 10000
+            });
         }
 
         // Start app
