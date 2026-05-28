@@ -1271,7 +1271,8 @@
                 supportRemoved: 0,
                 totalBreakTime: 0,
                 activeBreak: null,
-                takenBreaks: []
+                takenBreaks: [],
+                stopLocations: []
             },
             history: []
         };
@@ -1307,6 +1308,9 @@
         let mapMarker = null;
         let watchId = null;
         let mapInitialized = false;
+        let currentLat = null;
+        let currentLon = null;
+        let stopMarkersGroup = null;
 
         // Initialize app
         function init() {
@@ -1550,7 +1554,8 @@
                 supportRemoved: 0,
                 totalBreakTime: 0,
                 activeBreak: null,
-                takenBreaks: []
+                takenBreaks: [],
+                stopLocations: []
             };
             
             saveState();
@@ -1718,22 +1723,47 @@
             }
         }
 
+
+
         function addStop() {
             if (!state.shift.isActive) return;
             state.shift.stops.push(Date.now());
+            
+            // Record location
+            if (!state.shift.stopLocations) state.shift.stopLocations = [];
+            if (currentLat && currentLon) {
+                state.shift.stopLocations.push([currentLat, currentLon]);
+                dropStopMarker(currentLat, currentLon);
+            } else {
+                state.shift.stopLocations.push(null);
+            }
+            
             saveState();
             updateShiftDisplay();
             renderStopLog();
+            playSuccessSound();
             
-            // Provide haptic feedback if supported!
+            // Auto vibrate on mobile
             if (navigator.vibrate) {
-                navigator.vibrate(50);
+                navigator.vibrate([100, 50, 100]);
             }
         }
 
         function undoStop() {
             if (state.shift.stops.length === 0) return;
             state.shift.stops.pop();
+            
+            if (state.shift.stopLocations) {
+                state.shift.stopLocations.pop();
+                // Redraw map markers
+                if (stopMarkersGroup) {
+                    stopMarkersGroup.clearLayers();
+                    state.shift.stopLocations.forEach(loc => {
+                        if (loc) dropStopMarker(loc[0], loc[1]);
+                    });
+                }
+            }
+            
             saveState();
             updateShiftDisplay();
             renderStopLog();
@@ -2008,8 +2038,27 @@
             });
             
             mapMarker = L.marker([33.9425, -118.0351], { icon: customIcon }).addTo(leafletMap);
+            stopMarkersGroup = L.layerGroup().addTo(leafletMap);
+            
+            // Draw existing stops if reloading the page
+            if (state.shift.stopLocations && state.shift.stopLocations.length > 0) {
+                state.shift.stopLocations.forEach(loc => {
+                    if (loc) dropStopMarker(loc[0], loc[1]);
+                });
+            }
             
             startLiveTracking();
+        }
+        
+        function dropStopMarker(lat, lon) {
+            if (!leafletMap || !stopMarkersGroup) return;
+            const xIcon = L.divIcon({
+                className: 'x-marker',
+                html: '<div style="color: #ef4444; font-size: 16px; font-weight: 900; text-shadow: 0 0 4px white;">❌</div>',
+                iconSize: [20, 20],
+                iconAnchor: [10, 10]
+            });
+            L.marker([lat, lon], { icon: xIcon }).addTo(stopMarkersGroup);
         }
         
         function startLiveTracking() {
@@ -2021,14 +2070,14 @@
             if (watchId) navigator.geolocation.clearWatch(watchId);
             
             watchId = navigator.geolocation.watchPosition((position) => {
-                const lat = position.coords.latitude;
-                const lon = position.coords.longitude;
+                currentLat = position.coords.latitude;
+                currentLon = position.coords.longitude;
                 
                 document.getElementById('map-status').textContent = 'Live 🟢';
                 
                 if (mapMarker && leafletMap) {
-                    mapMarker.setLatLng([lat, lon]);
-                    leafletMap.setView([lat, lon], leafletMap.getZoom());
+                    mapMarker.setLatLng([currentLat, currentLon]);
+                    leafletMap.setView([currentLat, currentLon], leafletMap.getZoom());
                 }
             }, (error) => {
                 document.getElementById('map-status').textContent = 'GPS Error 🔴';
@@ -2037,6 +2086,47 @@
                 maximumAge: 0,
                 timeout: 10000
             });
+        }
+
+        // Play loud double-beep confirmation sound
+        function playSuccessSound() {
+            try {
+                // Use standard AudioContext
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                const audioCtx = new AudioContext();
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+
+                // First beep
+                const osc1 = audioCtx.createOscillator();
+                const gain1 = audioCtx.createGain();
+                osc1.connect(gain1);
+                gain1.connect(audioCtx.destination);
+                
+                osc1.type = 'sine';
+                osc1.frequency.setValueAtTime(1200, audioCtx.currentTime); // High pitch
+                gain1.gain.setValueAtTime(1, audioCtx.currentTime); // Max volume
+                gain1.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+                
+                osc1.start(audioCtx.currentTime);
+                osc1.stop(audioCtx.currentTime + 0.1);
+
+                // Second higher beep right after
+                const osc2 = audioCtx.createOscillator();
+                const gain2 = audioCtx.createGain();
+                osc2.connect(gain2);
+                gain2.connect(audioCtx.destination);
+                
+                osc2.type = 'sine';
+                osc2.frequency.setValueAtTime(1600, audioCtx.currentTime + 0.15); // Even higher pitch
+                gain2.gain.setValueAtTime(1, audioCtx.currentTime + 0.15); // Max volume
+                gain2.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+                
+                osc2.start(audioCtx.currentTime + 0.15);
+                osc2.stop(audioCtx.currentTime + 0.3);
+                
+            } catch(e) {
+                console.log("Audio failed", e);
+            }
         }
 
         // Start app
