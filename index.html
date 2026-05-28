@@ -1695,6 +1695,7 @@
             } else {
                 elapsedSeconds = (now - state.shift.startTime - state.shift.totalBreakTime) / 1000;
                 const btn = document.getElementById('massive-log-stop');
+            }
             let elapsedMs = now - state.shift.startTime;
             
             // Subtract previously finished breaks
@@ -1718,13 +1719,22 @@
             const hoursDecimal = elapsedMs / 3600000;
             const rate = hoursDecimal > 0 ? (completed / hoursDecimal).toFixed(1) : '0.0';
 
-            document.getElementById('display-total').innerText = totalStops;
-            document.getElementById('display-completed').innerText = completed;
-            document.getElementById('display-remaining').innerText = remaining;
-            document.getElementById('display-rate').innerText = rate;
+            if(document.getElementById('display-total')) document.getElementById('display-total').innerText = totalStops;
+            if(document.getElementById('shift-total')) document.getElementById('shift-total').textContent = totalStops;
+            
+            if(document.getElementById('display-completed')) document.getElementById('display-completed').innerText = completed;
+            if(document.getElementById('shift-completed')) document.getElementById('shift-completed').textContent = completed;
+            
+            if(document.getElementById('display-remaining')) document.getElementById('display-remaining').innerText = remaining;
+            if(document.getElementById('stops-remaining')) document.getElementById('stops-remaining').textContent = remaining;
+            
+            if(document.getElementById('display-rate')) document.getElementById('display-rate').innerText = rate;
+            if(document.getElementById('shift-rate')) document.getElementById('shift-rate').textContent = rate + '/hr';
 
             const progress = totalStops > 0 ? (completed / totalStops) * 100 : 0;
-            document.getElementById('shift-progress-bar').style.width = `${progress}%`;
+            if(document.getElementById('shift-progress-bar')) document.getElementById('shift-progress-bar').style.width = `${progress}%`;
+            if(document.getElementById('progress-pct')) document.getElementById('progress-pct').textContent = progress.toFixed(0);
+            if(document.getElementById('pace-fill')) document.getElementById('pace-fill').style.width = `${progress}%`;
 
             // Massive Button Logic & Break Status
             const massiveBtn = document.getElementById('massive-log-stop');
@@ -1743,12 +1753,14 @@
                 
                 massiveBtn.innerHTML = `${state.shift.activeBreak.type} <br> <span style="font-size:36px; font-weight:900;">${timeLeftStr}</span><br><span style="font-size:16px;">Tap to end early</span>`;
                 
+                const isActive = massiveBtn.classList.contains('active') ? ' active' : '';
+                
                 // If break is over, make it red and vibrating
                 if (breakTimeLeftMs === 0) {
-                    massiveBtn.className = 'massive-stop-btn is-break-over';
+                    massiveBtn.className = 'massive-stop-btn is-break-over' + isActive;
                     if (navigator.vibrate && Math.random() > 0.8) navigator.vibrate([200, 100, 200]);
                 } else {
-                    massiveBtn.className = 'massive-stop-btn is-break';
+                    massiveBtn.className = 'massive-stop-btn is-break' + isActive;
                 }
                 massiveBtn.onclick = endBreak;
                 
@@ -1756,9 +1768,10 @@
                 document.getElementById('nearby-spots').style.display = 'block';
                 
             } else {
+                const isActive = massiveBtn.classList.contains('active') ? ' active' : '';
                 // Normal delivering mode
                 massiveBtn.innerHTML = '✓ Stop Delivered';
-                massiveBtn.className = 'massive-stop-btn';
+                massiveBtn.className = 'massive-stop-btn' + isActive;
                 massiveBtn.onclick = addStop;
                 document.getElementById('nearby-spots').style.display = 'none';
             }
