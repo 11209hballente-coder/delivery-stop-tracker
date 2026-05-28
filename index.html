@@ -2286,7 +2286,6 @@
                     (
                       node["amenity"="fast_food"](around:3200, ${currentLat}, ${currentLon});
                       node["amenity"="restaurant"](around:3200, ${currentLat}, ${currentLon});
-                      node["amenity"="toilets"](around:3200, ${currentLat}, ${currentLon});
                     );
                     out 20;
                 `;
@@ -2346,7 +2345,7 @@
                     });
                 }
                 
-                if (toilets.length > 0) {
+                if (toilets.length > 0 && breakType !== 'Lunch') {
                     html += '<div style="color:#3b82f6; font-weight:bold; margin-top:8px;">🚽 Closest Bathrooms</div>';
                     const seenNames = new Set();
                     toilets.filter(t => {
