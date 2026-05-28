@@ -915,6 +915,40 @@
             color: #1d4ed8;
         }
 
+        /* Nearby Spots */
+        .nearby-spots-card {
+            background: white;
+            border-radius: 12px;
+            padding: 16px;
+            margin-top: 16px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            text-align: left;
+            border-left: 4px solid #3b82f6;
+        }
+        .nearby-spots-card h3 {
+            font-size: 16px;
+            margin-bottom: 8px;
+            color: #111;
+        }
+        .spot-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
+            font-size: 14px;
+        }
+        .spot-item:last-child {
+            border-bottom: none;
+        }
+        .spot-name {
+            font-weight: 600;
+            color: #374151;
+        }
+        .spot-dist {
+            color: #6b7280;
+            font-weight: 500;
+        }
+
         /* Map Tab */
         #map-container {
             height: 400px;
@@ -1153,9 +1187,9 @@
             </div>
 
             <div class="break-controls" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 20px;">
-                <button class="control-btn" id="btn-break-lunch" style="background: #fdf6e3; color: #b58900;" onclick="startBreak('lunch', 30)">🍽️ Lunch</button>
-                <button class="control-btn" id="btn-break-break1" style="background: #e6f7ff; color: #0050b3;" onclick="startBreak('break1', 15)">☕ Break 1</button>
-                <button class="control-btn" id="btn-break-break2" style="background: #e6f7ff; color: #0050b3;" onclick="startBreak('break2', 15)">☕ Break 2</button>
+                <button class="control-btn" id="btn-break-lunch" style="background: #fdf6e3; color: #b58900;" onclick="startBreak('Lunch', 30)">🍽️ Lunch</button>
+                <button class="control-btn" id="btn-break-break1" style="background: #e6f7ff; color: #0050b3;" onclick="startBreak('Break 1', 15)">☕ Break 1</button>
+                <button class="control-btn" id="btn-break-break2" style="background: #e6f7ff; color: #0050b3;" onclick="startBreak('Break 2', 15)">☕ Break 2</button>
             </div>
 
             <button class="control-btn end" onclick="endShift()">End Shift</button>
@@ -1218,6 +1252,11 @@
 
     <!-- HUGE FIXED LOG STOP BUTTON -->
     <button id="massive-log-stop" class="massive-stop-btn" onclick="addStop()">✓ Stop Delivered</button>
+
+    <div id="nearby-spots" class="nearby-spots-card container" style="display: none; position: fixed; bottom: 120px; left: 0; right: 0; margin: 0 auto; width: calc(100% - 40px); z-index: 99;">
+        <h3 id="nearby-title">Nearby Spots</h3>
+        <div id="nearby-content">Searching area... ⏳</div>
+    </div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
@@ -1656,99 +1695,127 @@
             } else {
                 elapsedSeconds = (now - state.shift.startTime - state.shift.totalBreakTime) / 1000;
                 const btn = document.getElementById('massive-log-stop');
-                btn.textContent = '✓ Stop Delivered';
-                btn.style.background = '';
-                btn.style.color = '';
-                btn.onclick = addStop;
-            }
-
-            const elapsed = Math.max(0, elapsedSeconds);
-            const hours = Math.floor(elapsed / 3600);
-            const minutes = Math.floor((elapsed % 3600) / 60);
-            const seconds = Math.floor(elapsed % 60);
+            let elapsedMs = now - state.shift.startTime;
             
-            const timerStr = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-            document.getElementById('shift-timer').textContent = timerStr;
+            // Subtract previously finished breaks
+            elapsedMs -= state.shift.totalBreakTime;
+            
+            // Subtract currently active break time so the timer "pauses"
+            if (state.shift.activeBreak) {
+                const activeBreakElapsed = now - state.shift.activeBreak.startTime;
+                elapsedMs -= activeBreakElapsed;
+            }
+            
+            const hours = Math.floor(elapsedMs / 3600000);
+            const minutes = Math.floor((elapsedMs % 3600000) / 60000);
+            const seconds = Math.floor((elapsedMs % 60000) / 1000);
+            document.getElementById('shift-timer').innerText = 
+                `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 
-            const elapsedHours = elapsed / 3600;
+            const totalStops = state.setup.totalStops - state.shift.supportRemoved;
             const completed = state.shift.stops.length;
-            const total = state.setup.totalStops;
-            const remaining = Math.max(0, total - completed);
-            const currentRate = (completed / elapsedHours).toFixed(1);
-            const targetRate = (total / state.setup.shiftLength).toFixed(1);
+            const remaining = totalStops - completed;
+            const hoursDecimal = elapsedMs / 3600000;
+            const rate = hoursDecimal > 0 ? (completed / hoursDecimal).toFixed(1) : '0.0';
 
-            document.getElementById('shift-completed').textContent = completed;
-            document.getElementById('shift-total').textContent = total;
-            document.getElementById('shift-rate').textContent = currentRate + '/hr';
-            document.getElementById('current-rate').textContent = currentRate;
-            document.getElementById('target-rate').textContent = targetRate;
+            document.getElementById('display-total').innerText = totalStops;
+            document.getElementById('display-completed').innerText = completed;
+            document.getElementById('display-remaining').innerText = remaining;
+            document.getElementById('display-rate').innerText = rate;
 
-            // Progress
-            const progressPct = ((completed / total) * 100).toFixed(0);
-            document.getElementById('progress-pct').textContent = progressPct;
-            document.getElementById('stops-remaining').textContent = remaining;
+            const progress = totalStops > 0 ? (completed / totalStops) * 100 : 0;
+            document.getElementById('shift-progress-bar').style.width = `${progress}%`;
 
-            // ETA
-            if (currentRate > 0) {
-                const timeToFinish = (remaining / currentRate) * 60; // in minutes
-                const finishTime = new Date(Date.now() + timeToFinish * 60000);
-                const eta = finishTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-                document.getElementById('eta-time').textContent = eta;
-            }
-
-            // Pace
-            const pacePercent = ((currentRate / targetRate) * 100).toFixed(0);
-            const paceFill = document.getElementById('pace-fill');
-            paceFill.style.width = Math.min(pacePercent, 100) + '%';
-            document.getElementById('pace-pct').textContent = pacePercent + '%';
+            // Massive Button Logic & Break Status
+            const massiveBtn = document.getElementById('massive-log-stop');
             
-            paceFill.classList.remove('behind', 'critical');
-            if (pacePercent < 80) {
-                paceFill.classList.add('critical');
-            } else if (pacePercent < 100) {
-                paceFill.classList.add('behind');
+            if (state.shift.activeBreak) {
+                // We are on break, show countdown timer instead of log stop
+                const breakTimeTotalMs = state.shift.activeBreak.durationMinutes * 60000;
+                const breakTimeElapsedMs = now - state.shift.activeBreak.startTime;
+                let breakTimeLeftMs = breakTimeTotalMs - breakTimeElapsedMs;
+                
+                if (breakTimeLeftMs < 0) breakTimeLeftMs = 0;
+                
+                const bMin = Math.floor(breakTimeLeftMs / 60000);
+                const bSec = Math.floor((breakTimeLeftMs % 60000) / 1000);
+                const timeLeftStr = `${String(bMin).padStart(2, '0')}:${String(bSec).padStart(2, '0')}`;
+                
+                massiveBtn.innerHTML = `${state.shift.activeBreak.type} <br> <span style="font-size:36px; font-weight:900;">${timeLeftStr}</span><br><span style="font-size:16px;">Tap to end early</span>`;
+                
+                // If break is over, make it red and vibrating
+                if (breakTimeLeftMs === 0) {
+                    massiveBtn.className = 'massive-stop-btn is-break-over';
+                    if (navigator.vibrate && Math.random() > 0.8) navigator.vibrate([200, 100, 200]);
+                } else {
+                    massiveBtn.className = 'massive-stop-btn is-break';
+                }
+                massiveBtn.onclick = endBreak;
+                
+                // Keep nearby spots visible
+                document.getElementById('nearby-spots').style.display = 'block';
+                
+            } else {
+                // Normal delivering mode
+                massiveBtn.innerHTML = '✓ Stop Delivered';
+                massiveBtn.className = 'massive-stop-btn';
+                massiveBtn.onclick = addStop;
+                document.getElementById('nearby-spots').style.display = 'none';
             }
 
-            // Avg gap
-            if (completed > 1) {
-                const firstStop = state.shift.stops[0];
-                const lastStop = state.shift.stops[completed - 1];
-                const timeBetween = (lastStop - firstStop) / (completed - 1) / 1000 / 60;
-                document.getElementById('avg-gap').textContent = timeBetween.toFixed(1);
-            }
-
-            updateSummary();
-            
-            // Update break buttons
-            ['lunch', 'break1', 'break2'].forEach(type => {
-                const btn = document.getElementById(`btn-break-${type}`);
-                if (btn) {
-                    if (state.shift.takenBreaks.includes(type) || state.shift.activeBreak) {
-                        btn.style.opacity = '0.5';
-                        btn.style.pointerEvents = 'none';
-                    } else {
-                        btn.style.opacity = '1';
-                        btn.style.pointerEvents = 'auto';
-                    }
+            // Update break buttons status
+            ['Lunch', 'Break 1', 'Break 2'].forEach(type => {
+                const btn = Array.from(document.querySelectorAll('.break-btn')).find(b => b.innerText.includes(type));
+                if (!btn) return;
+                
+                if (state.shift.takenBreaks.includes(type)) {
+                    btn.style.opacity = '0.5';
+                    btn.style.pointerEvents = 'none';
+                    btn.innerText = `✓ ${type}`;
+                } else if (state.shift.activeBreak && state.shift.activeBreak.type === type) {
+                    btn.style.opacity = '1';
+                    btn.style.pointerEvents = 'none';
+                    btn.innerText = `⏳ On Break`;
+                } else if (state.shift.activeBreak) {
+                    btn.style.opacity = '0.5';
+                    btn.style.pointerEvents = 'none';
+                } else {
+                    btn.style.opacity = '1';
+                    btn.style.pointerEvents = 'auto';
+                    btn.innerText = btn.innerText.replace('✓ ', '').replace('⏳ On Break', type);
                 }
             });
         }
 
-        function startBreak(type, durationMin) {
+        function startBreak(type, minutes) {
             if (!state.shift.isActive || state.shift.activeBreak) return;
-            state.shift.activeBreak = { type, startTime: Date.now(), durationMin };
+            
+            state.shift.activeBreak = {
+                type: type,
+                durationMinutes: minutes,
+                startTime: Date.now()
+            };
+            
             saveState();
             updateShiftDisplay();
+            
+            // Show Nearby Spots
+            fetchNearbySpots(type);
         }
 
         function endBreak() {
             if (!state.shift.activeBreak) return;
-            const elapsed = Date.now() - state.shift.activeBreak.startTime;
-            state.shift.totalBreakTime += elapsed;
+            
+            const breakElapsed = Date.now() - state.shift.activeBreak.startTime;
+            state.shift.totalBreakTime += breakElapsed;
             state.shift.takenBreaks.push(state.shift.activeBreak.type);
             state.shift.activeBreak = null;
+            
             saveState();
             updateShiftDisplay();
+            
+            // Hide Nearby Spots
+            document.getElementById('nearby-spots').style.display = 'none';
         }
 
         function updateSummary() {
@@ -2170,6 +2237,120 @@
                 maximumAge: 0,
                 timeout: 10000
             });
+        }
+        
+        // --- Nearby Spots API ---
+        function getDistanceMiles(lat1, lon1, lat2, lon2) {
+            const R = 3958.8; // Radius of earth in miles
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = 
+                Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+                Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
+            return R * c;
+        }
+
+        async function fetchNearbySpots(breakType) {
+            const container = document.getElementById('nearby-spots');
+            const content = document.getElementById('nearby-content');
+            
+            if (!currentLat || !currentLon) {
+                content.innerHTML = 'GPS location required to find spots. 📡';
+                container.style.display = 'block';
+                return;
+            }
+            
+            container.style.display = 'block';
+            content.innerHTML = 'Searching area... ⏳';
+            
+            let query = '';
+            if (breakType === 'Lunch') {
+                query = `
+                    [out:json];
+                    (
+                      node["amenity"="fast_food"](around:3200, ${currentLat}, ${currentLon});
+                      node["amenity"="restaurant"](around:3200, ${currentLat}, ${currentLon});
+                      node["amenity"="toilets"](around:3200, ${currentLat}, ${currentLon});
+                    );
+                    out 20;
+                `;
+            } else {
+                query = `
+                    [out:json];
+                    (
+                      node["amenity"="toilets"](around:4800, ${currentLat}, ${currentLon});
+                    );
+                    out 10;
+                `;
+            }
+
+            try {
+                const response = await fetch('https://overpass-api.de/api/interpreter', {
+                    method: 'POST',
+                    body: query
+                });
+                const data = await response.json();
+                
+                let food = [];
+                let toilets = [];
+                
+                data.elements.forEach(el => {
+                    if (!el.tags) return;
+                    // Skip vague things
+                    if (el.tags.name === 'Pizza' || el.tags.name === 'Restaurant') {
+                        // Keep going, but favor real names
+                    }
+                    const name = el.tags.name || (el.tags.amenity === 'toilets' ? 'Public Restroom / Gas Station' : 'Local Food Spot');
+                    const dist = getDistanceMiles(currentLat, currentLon, el.lat, el.lon);
+                    
+                    if (el.tags.amenity === 'toilets') {
+                        toilets.push({ name, dist });
+                    } else {
+                        food.push({ name, dist });
+                    }
+                });
+                
+                food.sort((a,b) => a.dist - b.dist);
+                toilets.sort((a,b) => a.dist - b.dist);
+                
+                let html = '';
+                
+                if (breakType === 'Lunch' && food.length > 0) {
+                    html += '<div style="color:#f59e0b; font-weight:bold; margin-top:8px;">🍔 Closest Food</div>';
+                    // Dedup logic
+                    const seenNames = new Set();
+                    food.filter(f => {
+                        if (seenNames.has(f.name)) return false;
+                        seenNames.add(f.name);
+                        return true;
+                    }).slice(0, 3).forEach(f => {
+                        html += `<div class="spot-item"><span class="spot-name">${f.name}</span><span class="spot-dist">${f.dist.toFixed(1)} mi</span></div>`;
+                    });
+                }
+                
+                if (toilets.length > 0) {
+                    html += '<div style="color:#3b82f6; font-weight:bold; margin-top:8px;">🚽 Closest Bathrooms</div>';
+                    const seenNames = new Set();
+                    toilets.filter(t => {
+                        if (seenNames.has(t.name)) return false;
+                        seenNames.add(t.name);
+                        return true;
+                    }).slice(0, 2).forEach(t => {
+                        html += `<div class="spot-item"><span class="spot-name">${t.name}</span><span class="spot-dist">${t.dist.toFixed(1)} mi</span></div>`;
+                    });
+                }
+                
+                if (!html) {
+                    html = 'No locations found nearby. 🏜️';
+                }
+                
+                content.innerHTML = html;
+                
+            } catch(e) {
+                content.innerHTML = 'Error searching OpenStreetMap. 📡';
+            }
         }
 
         // Play loud double-beep confirmation sound
