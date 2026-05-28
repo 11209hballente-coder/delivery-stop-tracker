@@ -981,6 +981,23 @@
             </div>
 
             <div class="setup-section">
+                <h3>Route Details</h3>
+                <div class="input-field" style="margin-bottom: 12px;">
+                    <label>Route Type</label>
+                    <select id="routeType">
+                        <option value="Residential">Residential</option>
+                        <option value="Apartment & Multi-Family">Apartment & Multi-Family</option>
+                        <option value="Business-Heavy (Commercial)">Business-Heavy (Commercial)</option>
+                        <option value="Rural Route">Rural Route</option>
+                        <option value="Downtown City Route">Downtown City Route</option>
+                        <option value="50/50 Residential & Apartments">50/50 Residential & Apartments</option>
+                        <option value="50/50 Apartments & Business">50/50 Apartments & Business</option>
+                        <option value="50/50 Residential & Business">50/50 Residential & Business</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="setup-section">
                 <h3>Weather</h3>
                 <div class="weather-card" id="weather-card">
                     <div class="weather-header">
@@ -1175,6 +1192,7 @@
                 <div class="leaderboard-title">🏆 Top Drivers</div>
                 <div class="leaderboard-subtitle">Global Stops/Hr Averages</div>
             </div>
+
             <div id="leaderboard-content">
                 <!-- Dynamically populated -->
             </div>
@@ -1219,7 +1237,7 @@
         const db = getFirestore(app);
 
         window.firebaseDB = {
-            saveScore: async (name, rate, stops, date) => {
+            saveScore: async (name, rate, stops, date, routeType) => {
                 if (!name) return;
                 try {
                     await addDoc(collection(db, "leaderboard"), {
@@ -1227,6 +1245,7 @@
                         rate: parseFloat(rate),
                         stops: stops,
                         date: date,
+                        routeType: routeType || 'Residential',
                         timestamp: Date.now()
                     });
                 } catch (e) {
@@ -1235,7 +1254,8 @@
             },
             getTopScores: async () => {
                 try {
-                    const q = query(collection(db, "leaderboard"), orderBy("rate", "desc"), limit(20));
+                    // Fetch all so we can filter by routeType locally without needing a composite index
+                    const q = query(collection(db, "leaderboard"));
                     const querySnapshot = await getDocs(q);
                     let scores = [];
                     querySnapshot.forEach((doc) => {
@@ -1255,6 +1275,7 @@
         const state = {
             setup: {
                 driverName: '',
+                routeType: 'Residential',
                 totalStops: 0,
                 totalLocations: 0,
                 totalPackages: 0,
@@ -1331,11 +1352,12 @@
             });
 
             // Setup input listeners
-            ['driverName', 'totalStops', 'totalLocations', 'totalPackages', 'shiftLength', 'lockers', 'bulkDropoffs', 'apartments', 'multiLocation'].forEach(id => {
+            ['driverName', 'routeType', 'totalStops', 'totalLocations', 'totalPackages', 'shiftLength', 'lockers', 'bulkDropoffs', 'apartments', 'multiLocation'].forEach(id => {
                 const el = document.getElementById(id);
+                if (!el) return;
                 el.value = state.setup[id] || '';
                 el.addEventListener('input', (e) => {
-                    if (id === 'driverName') {
+                    if (id === 'driverName' || id === 'routeType') {
                         state.setup[id] = e.target.value;
                     } else {
                         state.setup[id] = parseFloat(e.target.value) || 0;
@@ -1858,14 +1880,15 @@
                 lockers: state.setup.lockers,
                 bulk: state.setup.bulkDropoffs,
                 apts: state.setup.apartments,
-                multi: state.setup.multiLocation
+                multi: state.setup.multiLocation,
+                routeType: state.setup.routeType || 'Residential'
             };
 
             state.history.unshift(shiftRecord);
             state.shift.isActive = false;
             
             if (window.firebaseDB && state.setup.driverName) {
-                window.firebaseDB.saveScore(state.setup.driverName, rate, finalStops, shiftRecord.date);
+                window.firebaseDB.saveScore(state.setup.driverName, rate, finalStops, shiftRecord.date, state.setup.routeType);
             }
             
             saveState();
@@ -1957,20 +1980,50 @@
         }
 
         async function renderLeaderboard() {
-            document.getElementById('leaderboard-content').innerHTML = `
+            const container = document.getElementById('leaderboard-content');
+            
+            container.innerHTML = `
                 <div style="text-align: center; padding: 40px; color: #666; font-size: 14px;">
                     Fetching live scores... ⏳
                 </div>
             `;
 
-            let allDrivers = [];
+            let allScores = [];
 
             if (window.firebaseDB) {
-                const liveScores = await window.firebaseDB.getTopScores();
-                
-                // Keep only the highest score per driver
+                allScores = await window.firebaseDB.getTopScores();
+            }
+
+            if (allScores.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🏆</div>
+                        No scores yet. Be the first to end a shift!
+                    </div>
+                `;
+                return;
+            }
+
+            const categories = [
+                { name: 'Residential', icon: '🏡' },
+                { name: 'Apartment & Multi-Family', icon: '🏢' },
+                { name: 'Business-Heavy (Commercial)', icon: '🏢' },
+                { name: 'Rural Route', icon: '🚜' },
+                { name: 'Downtown City Route', icon: '🏙️' },
+                { name: '50/50 Residential & Apartments', icon: '🏡/🏢' },
+                { name: '50/50 Apartments & Business', icon: '🏢/🏢' },
+                { name: '50/50 Residential & Business', icon: '🏡/🏢' }
+            ];
+
+            let html = '';
+            const myName = state.setup.driverName || '';
+            
+            categories.forEach(cat => {
+                // Get highest score per driver for THIS category
                 const uniqueDrivers = {};
-                liveScores.forEach(score => {
+                allScores.forEach(score => {
+                    if (score.routeType !== cat.name) return;
+                    
                     if (!uniqueDrivers[score.name] || uniqueDrivers[score.name].rate < score.rate) {
                         uniqueDrivers[score.name] = {
                             name: score.name,
@@ -1980,42 +2033,45 @@
                     }
                 });
                 
-                allDrivers = Object.values(uniqueDrivers);
-                allDrivers.sort((a, b) => b.rate - a.rate);
-            }
-
-            if (allDrivers.length === 0) {
-                document.getElementById('leaderboard-content').innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-state-icon">🏆</div>
-                        No scores yet. Be the first to end a shift!
-                    </div>
-                `;
-                return;
-            }
-
-            let html = '';
-            const myName = state.setup.driverName || '';
-            
-            allDrivers.forEach((driver, idx) => {
-                const isUser = myName && driver.name === myName;
+                let driversInCat = Object.values(uniqueDrivers);
+                driversInCat.sort((a, b) => b.rate - a.rate);
                 
-                // Top 3 medals
-                let medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : '🎖️';
-                
-                html += `
-                    <div class="rank-item ${isUser ? 'is-user' : ''}">
-                        <div class="rank-number">#${idx + 1}</div>
-                        <div class="rank-details">
-                            <div class="rank-name">${driver.name} ${isUser ? '(You)' : ''}</div>
-                            <div class="rank-badge">${medal} ${driver.badge}</div>
+                // Only render category if there are scores
+                if (driversInCat.length > 0) {
+                    html += `
+                        <div style="margin-top: 24px; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 2px solid #e5e7eb;">
+                            <h3 style="font-size: 16px; color: #374151;">${cat.icon} Top ${cat.name}</h3>
                         </div>
-                        <div class="rank-rate">${driver.rate.toFixed(1)}<span>/hr</span></div>
-                    </div>
-                `;
+                    `;
+                    
+                    driversInCat.forEach((driver, idx) => {
+                        const isUser = myName && driver.name === myName;
+                        let medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : '🎖️';
+                        
+                        html += `
+                            <div class="rank-item ${isUser ? 'is-user' : ''}">
+                                <div class="rank-number">#${idx + 1}</div>
+                                <div class="rank-details">
+                                    <div class="rank-name">${driver.name} ${isUser ? '(You)' : ''}</div>
+                                    <div class="rank-badge">${medal} ${driver.badge}</div>
+                                </div>
+                                <div class="rank-rate">${driver.rate.toFixed(1)}<span>/hr</span></div>
+                            </div>
+                        `;
+                    });
+                }
             });
 
-            document.getElementById('leaderboard-content').innerHTML = html;
+            if (!html) {
+                html = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🏆</div>
+                        No scores found for these categories yet!
+                    </div>
+                `;
+            }
+
+            container.innerHTML = html;
         }
 
         // Live Map Logic
