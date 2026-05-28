@@ -1335,6 +1335,13 @@
                     console.error("Error fetching scores: ", e);
                     return [];
                 }
+            },
+            wipeLeaderboard: async () => {
+                const q = query(collection(db, "leaderboard"));
+                const querySnapshot = await getDocs(q);
+                for (const document of querySnapshot.docs) {
+                    await deleteDoc(doc(db, "leaderboard", document.id));
+                }
             }
         };
     </script>
@@ -2225,11 +2232,7 @@
             const container = document.getElementById('leaderboard-content');
             container.innerHTML = '<div class="empty-state">Wiping leaderboard... 🧹</div>';
             try {
-                const q = query(collection(db, "leaderboard"));
-                const querySnapshot = await getDocs(q);
-                for (const document of querySnapshot.docs) {
-                    await deleteDoc(doc(db, "leaderboard", document.id));
-                }
+                await window.firebaseDB.wipeLeaderboard();
                 renderLeaderboard();
             } catch (e) {
                 console.error("Error wiping leaderboard: ", e);
