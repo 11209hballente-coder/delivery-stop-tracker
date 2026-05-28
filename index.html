@@ -1256,6 +1256,7 @@
     <div id="nearby-spots" class="nearby-spots-card container" style="display: none; position: fixed; bottom: 120px; left: 0; right: 0; margin: 0 auto; width: calc(100% - 40px); z-index: 99;">
         <h3 id="nearby-title">Nearby Spots</h3>
         <div id="nearby-content">Searching area... ⏳</div>
+        <div id="nearby-map" style="height: 140px; width: 100%; border-radius: 8px; margin-top: 12px; display: none; z-index: 1;"></div>
     </div>
 
     <script type="module">
@@ -2319,9 +2320,9 @@
                     const dist = getDistanceMiles(currentLat, currentLon, el.lat, el.lon);
                     
                     if (el.tags.amenity === 'toilets') {
-                        toilets.push({ name, dist });
+                        toilets.push({ name, dist, lat: el.lat, lon: el.lon });
                     } else {
-                        food.push({ name, dist });
+                        food.push({ name, dist, lat: el.lat, lon: el.lon });
                     }
                 });
                 
@@ -2329,6 +2330,7 @@
                 toilets.sort((a,b) => a.dist - b.dist);
                 
                 let html = '';
+                let mapSpots = [];
                 
                 if (breakType === 'Lunch' && food.length > 0) {
                     html += '<div style="color:#f59e0b; font-weight:bold; margin-top:8px;">🍔 Closest Food</div>';
@@ -2340,6 +2342,7 @@
                         return true;
                     }).slice(0, 3).forEach(f => {
                         html += `<div class="spot-item"><span class="spot-name">${f.name}</span><span class="spot-dist">${f.dist.toFixed(1)} mi</span></div>`;
+                        mapSpots.push({ ...f, type: 'food' });
                     });
                 }
                 
@@ -2352,6 +2355,7 @@
                         return true;
                     }).slice(0, 2).forEach(t => {
                         html += `<div class="spot-item"><span class="spot-name">${t.name}</span><span class="spot-dist">${t.dist.toFixed(1)} mi</span></div>`;
+                        mapSpots.push({ ...t, type: 'toilet' });
                     });
                 }
                 
@@ -2360,9 +2364,49 @@
                 }
                 
                 content.innerHTML = html;
+
+                // Draw map
+                if (mapSpots.length > 0) {
+                    document.getElementById('nearby-map').style.display = 'block';
+                    if (!window.nearbyMap) {
+                        window.nearbyMap = L.map('nearby-map').setView([currentLat, currentLon], 14);
+                        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(window.nearbyMap);
+                        window.nearbyMarkersLayer = L.layerGroup().addTo(window.nearbyMap);
+                    } else {
+                        window.nearbyMap.setView([currentLat, currentLon], 14);
+                        window.nearbyMarkersLayer.clearLayers();
+                    }
+                    setTimeout(() => window.nearbyMap.invalidateSize(), 200);
+                    
+                    // Add user marker
+                    L.marker([currentLat, currentLon], {
+                        icon: L.divIcon({
+                            className: 'user-marker',
+                            html: '<div style="background-color: #3b82f6; width: 14px; height: 14px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 4px rgba(0,0,0,0.5);"></div>',
+                            iconSize: [18, 18],
+                            iconAnchor: [9, 9]
+                        })
+                    }).addTo(window.nearbyMarkersLayer);
+
+                    // Add spots
+                    mapSpots.forEach(s => {
+                        const iconHtml = s.type === 'food' ? '🍔' : '🚽';
+                        L.marker([s.lat, s.lon], {
+                            icon: L.divIcon({
+                                className: 'spot-marker',
+                                html: `<div style="font-size:18px; filter: drop-shadow(0px 2px 2px rgba(0,0,0,0.3));">${iconHtml}</div>`,
+                                iconSize: [24, 24],
+                                iconAnchor: [12, 12]
+                            })
+                        }).addTo(window.nearbyMarkersLayer).bindPopup(`<strong>${s.name}</strong><br>${s.dist.toFixed(1)} miles away`);
+                    });
+                } else {
+                    document.getElementById('nearby-map').style.display = 'none';
+                }
                 
             } catch(e) {
                 content.innerHTML = 'Error searching OpenStreetMap. 📡';
+                if(document.getElementById('nearby-map')) document.getElementById('nearby-map').style.display = 'none';
             }
         }
 
